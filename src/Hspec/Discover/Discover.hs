@@ -14,8 +14,8 @@ module Hspec.Discover.Discover
     , configParserInfo
     , discover
     , generate
-    , Config(..)
-    , DiscoverResult(..)
+    , Config (..)
+    , DiscoverResult (..)
     ) where
 
 import Data.List (sort)
@@ -25,7 +25,7 @@ import qualified Data.Text.Lazy.Builder as TLB
 import qualified Data.Text.Lazy.IO as TL
 import Options.Applicative (Parser, ParserInfo)
 import qualified Options.Applicative as Opts
-import System.Directory (doesFileExist, listDirectory, doesDirectoryExist)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.Exit (exitFailure)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (stderr)
@@ -44,7 +44,8 @@ data Config = Config
     -- ^ Output file path where generated code should be written
     , moduleName :: String
     -- ^ Module name for the generated file (default: @Main@)
-    } deriving (Show, Eq)
+    }
+    deriving (Show, Eq)
 
 -- | Result of scanning a directory for @Spec.hs@ files.
 data DiscoverResult = DiscoverResult
@@ -52,7 +53,8 @@ data DiscoverResult = DiscoverResult
     -- ^ Subdirectory names that contain a @Spec.hs@ (sorted)
     , missing :: [String]
     -- ^ Subdirectory names that do not contain a @Spec.hs@ (sorted)
-    } deriving (Show, Eq)
+    }
+    deriving (Show, Eq)
 
 -- | Main entry point. Parses command-line arguments, discovers test modules,
 -- and writes the generated Haskell source to the output file.
@@ -62,12 +64,22 @@ data DiscoverResult = DiscoverResult
 run :: IO ()
 run = do
     config <- Opts.execParser configParserInfo
-    let dir = takeDirectory (originalPath config)
+    let
+        dir = takeDirectory (originalPath config)
     result <- discover dir
-    mapM_ (\d -> warn $ "hspec-discover-discover: " <> TLB.fromString (dir </> d) <> " is missing a Spec.hs") (missing result)
+    mapM_
+        ( \d ->
+            warn $
+                "hspec-discover-discover: "
+                    <> TLB.fromString (dir </> d)
+                    <> " is missing a Spec.hs"
+        )
+        (missing result)
     case found result of
         [] -> do
-            warn $ "hspec-discover-discover: no Spec.hs found in subdirectories of " <> TLB.fromString dir
+            warn $
+                "hspec-discover-discover: no Spec.hs found in subdirectories of "
+                    <> TLB.fromString dir
             exitFailure
         modules ->
             TL.writeFile (outputPath config) (generate config modules)
@@ -81,15 +93,17 @@ configParserInfo = Opts.info (configParser Opts.<**> Opts.helper) Opts.fullDesc
 -- (original path, input path, output path) and an optional @--module-name@
 -- flag.
 configParser :: Parser Config
-configParser = Config
-    <$> Opts.argument Opts.str (Opts.metavar "ORIGINAL_PATH")
-    <*> Opts.argument Opts.str (Opts.metavar "INPUT_PATH")
-    <*> Opts.argument Opts.str (Opts.metavar "OUTPUT_PATH")
-    <*> Opts.option Opts.str
+configParser =
+    Config
+        <$> Opts.argument Opts.str (Opts.metavar "ORIGINAL_PATH")
+        <*> Opts.argument Opts.str (Opts.metavar "INPUT_PATH")
+        <*> Opts.argument Opts.str (Opts.metavar "OUTPUT_PATH")
+        <*> Opts.option
+            Opts.str
             ( Opts.long "module-name"
-            <> Opts.value "Main"
-            <> Opts.metavar "NAME"
-            <> Opts.help "Module name for the generated file"
+                <> Opts.value "Main"
+                <> Opts.metavar "NAME"
+                <> Opts.help "Module name for the generated file"
             )
 
 -- | Scan a directory for immediate subdirectories containing @Spec.hs@.
@@ -100,15 +114,15 @@ discover dir = do
     entries <- listDirectory dir
     go (DiscoverResult [] []) entries
   where
-    go result [] = pure result { found = sort (found result), missing = sort (missing result) }
-    go result (e:es) = do
+    go result [] = pure result{found = sort (found result), missing = sort (missing result)}
+    go result (e : es) = do
         isDir <- doesDirectoryExist (dir </> e)
         if isDir
             then do
                 hasSpec <- doesFileExist (dir </> e </> "Spec.hs")
                 if hasSpec
-                    then go result { found = e : found result } es
-                    else go result { missing = e : missing result } es
+                    then go result{found = e : found result} es
+                    else go result{missing = e : missing result} es
             else go result es
 
 -- | Generate Haskell source code that imports and runs the discovered test
@@ -118,17 +132,31 @@ discover dir = do
 -- When 'moduleName' is @Main@, a @main@ function is generated that calls
 -- @hspec spec@. Otherwise, only @spec@ is exported.
 generate :: Config -> [String] -> Text
-generate config modules = TLB.toLazyText $
-    line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
-    <> line ("module " <> TLB.fromString (moduleName config) <> " (" <> exports <> ") where")
-    <> newline
-    <> line "import Test.Hspec"
-    <> foldMap (\m -> line ("import qualified " <> TLB.fromString m <> ".Spec")) modules
-    <> newline
-    <> mainDecl
-    <> line "spec :: Spec"
-    <> line "spec = do"
-    <> foldMap (\m -> line ("  describe " <> TLB.fromString (show m) <> " " <> TLB.fromString m <> ".Spec.spec")) modules
+generate config modules =
+    TLB.toLazyText $
+        line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
+            <> line
+                ("module " <> TLB.fromString (moduleName config) <> " (" <> exports <> ") where")
+            <> newline
+            <> line "import Test.Hspec"
+            <> foldMap
+                (\m -> line ("import qualified " <> TLB.fromString m <> ".Spec"))
+                modules
+            <> newline
+            <> mainDecl
+            <> line "spec :: Spec"
+            <> line "spec = do"
+            <> foldMap
+                ( \m ->
+                    line
+                        ( "  describe "
+                            <> TLB.fromString (show m)
+                            <> " "
+                            <> TLB.fromString m
+                            <> ".Spec.spec"
+                        )
+                )
+                modules
   where
     exports :: Builder
     exports
@@ -138,8 +166,8 @@ generate config modules = TLB.toLazyText $
     mainDecl
         | moduleName config == "Main" =
             line "main :: IO ()"
-            <> line "main = hspec spec"
-            <> newline
+                <> line "main = hspec spec"
+                <> newline
         | otherwise = mempty
 
 line :: Builder -> Builder
