@@ -64,6 +64,7 @@ test-suite hspec-discover-discover-test
   main-is: Spec.hs
   other-modules:
       Discover.Spec
+      Generate.GenerateSpec
       Generate.Spec
       ParseArgs.Spec
       Paths_hspec_discover_discover
@@ -73,7 +74,8 @@ test-suite hspec-discover-discover-test
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-tool-depends:
-      hspec-discover-discover:hspec-discover-discover
+      hspec-discover:hspec-discover
+    , hspec-discover-discover:hspec-discover-discover
   build-depends:
       base >=4.7 && <5
     , directory

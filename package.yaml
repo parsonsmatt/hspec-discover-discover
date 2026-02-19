@@ -61,6 +61,7 @@ tests:
     - -with-rtsopts=-N
     build-tools:
     - hspec-discover-discover
+    - hspec-discover
     dependencies:
     - hspec-discover-discover
     - hspec
