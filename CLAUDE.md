@@ -33,6 +33,12 @@ make format                         # Format all Haskell files with fourmolu
 
 Run `make format` (or `fourmolu -i **/*.hs`) before committing. The project uses fourmolu with 4-space indentation, leading commas, and leading import/export style. CI checks formatting via Restyled.
 
-## GHC Warnings
+## Code Style
 
-The project enables strict warnings including `-Wall`, `-Wcompat`, `-Wincomplete-record-updates`, `-Wincomplete-uni-patterns`, `-Wmissing-export-lists`, and `-Wredundant-constraints`. All modules must have explicit export lists.
+- **Imports**: Use qualified imports for utility modules (e.g. `qualified Data.Text.Lazy.Builder as TLB`, `qualified Options.Applicative as Opts`). Import types unqualified (e.g. `import Data.Text.Lazy (Text)`).
+- **Text**: Use `Data.Text.Lazy.Builder` for string construction, `Data.Text.Lazy.IO` for file I/O. Avoid `String` for output; `String`/`FilePath` is fine at the filesystem boundary.
+- **Warnings**: The project enables strict warnings including `-Wall`, `-Wcompat`, `-Wincomplete-record-updates`, `-Wincomplete-uni-patterns`, `-Wmissing-export-lists`, and `-Wredundant-constraints`. All modules must have explicit export lists. The build must be warning-free.
+
+## Adding Tests
+
+The test suite dogfoods `hspec-discover-discover` as its own preprocessor. To add a new test group, create a `test/<Name>/Spec.hs` module that exports `spec :: Spec` — it will be automatically discovered.
