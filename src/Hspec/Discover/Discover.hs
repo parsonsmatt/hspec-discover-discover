@@ -18,7 +18,7 @@ module Hspec.Discover.Discover
     , DiscoverResult (..)
     ) where
 
-import Data.List (sort)
+import Data.List (isSuffixOf, sort)
 import Data.Text.Lazy (Text)
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as TLB
@@ -51,6 +51,8 @@ data Config = Config
 data DiscoverResult = DiscoverResult
     { found :: [String]
     -- ^ Subdirectory names that contain a @Spec.hs@ (sorted)
+    , foundLocal :: [String]
+    -- ^ @*Spec.hs@ module names in the same directory (sorted), e.g. @["FooSpec"]@
     , missing :: [String]
     -- ^ Subdirectory names that do not contain a @Spec.hs@ (sorted)
     }
@@ -75,14 +77,14 @@ run = do
                     <> " is missing a Spec.hs"
         )
         (missing result)
-    case found result of
-        [] -> do
+    if null (found result) && null (foundLocal result)
+        then do
             warn $
                 "hspec-discover-discover: no Spec.hs found in subdirectories of "
                     <> TLB.fromString dir
             exitFailure
-        modules ->
-            TL.writeFile (outputPath config) (generate config modules)
+        else
+            TL.writeFile (outputPath config) (generate config result)
 
 -- | 'ParserInfo' for use with @optparse-applicative@. Includes @--help@
 -- support.
@@ -112,9 +114,15 @@ configParser =
 discover :: FilePath -> IO DiscoverResult
 discover dir = do
     entries <- listDirectory dir
-    go (DiscoverResult [] []) entries
+    go (DiscoverResult [] [] []) entries
   where
-    go result [] = pure result{found = sort (found result), missing = sort (missing result)}
+    go result [] =
+        pure
+            result
+                { found = sort (found result)
+                , foundLocal = sort (foundLocal result)
+                , missing = sort (missing result)
+                }
     go result (e : es) = do
         isDir <- doesDirectoryExist (dir </> e)
         if isDir
@@ -123,7 +131,13 @@ discover dir = do
                 if hasSpec
                     then go result{found = e : found result} es
                     else go result{missing = e : missing result} es
-            else go result es
+            else
+                if isLocalSpec e
+                    then go result{foundLocal = dropHs e : foundLocal result} es
+                    else go result es
+
+    isLocalSpec e = "Spec.hs" `isSuffixOf` e && e /= "Spec.hs"
+    dropHs e = take (length e - 3) e
 
 -- | Generate Haskell source code that imports and runs the discovered test
 -- modules. Each module is wrapped in a @describe@ block using the
@@ -131,8 +145,8 @@ discover dir = do
 --
 -- When 'moduleName' is @Main@, a @main@ function is generated that calls
 -- @hspec spec@. Otherwise, only @spec@ is exported.
-generate :: Config -> [String] -> Text
-generate config modules =
+generate :: Config -> DiscoverResult -> Text
+generate config result =
     TLB.toLazyText $
         line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
             <> line
@@ -141,7 +155,10 @@ generate config modules =
             <> line "import Test.Hspec"
             <> foldMap
                 (\m -> line ("import qualified " <> TLB.fromString m <> ".Spec"))
-                modules
+                (found result)
+            <> foldMap
+                (\m -> line ("import qualified " <> TLB.fromString m))
+                (foundLocal result)
             <> newline
             <> mainDecl
             <> line "spec :: Spec"
@@ -156,7 +173,18 @@ generate config modules =
                             <> ".Spec.spec"
                         )
                 )
-                modules
+                (found result)
+            <> foldMap
+                ( \m ->
+                    line
+                        ( "  describe "
+                            <> TLB.fromString (show (stripSpecSuffix m))
+                            <> " "
+                            <> TLB.fromString m
+                            <> ".spec"
+                        )
+                )
+                (foundLocal result)
   where
     exports :: Builder
     exports
@@ -169,6 +197,11 @@ generate config modules =
                 <> line "main = hspec spec"
                 <> newline
         | otherwise = mempty
+
+    stripSpecSuffix :: String -> String
+    stripSpecSuffix s
+        | "Spec" `isSuffixOf` s = take (length s - 4) s
+        | otherwise = s
 
 line :: Builder -> Builder
 line b = b <> TLB.singleton '\n'

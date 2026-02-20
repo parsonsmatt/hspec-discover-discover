@@ -16,6 +16,7 @@ spec = do
             createSubdir dir "Bar"
             result <- discover dir
             found result `shouldBe` ["Bar", "Foo"]
+            foundLocal result `shouldBe` []
             missing result `shouldBe` []
 
     it "reports subdirectories missing Spec.hs" $
@@ -48,6 +49,35 @@ spec = do
             createSubdir dir "Middle"
             result <- discover dir
             found result `shouldBe` ["Alpha", "Middle", "Zebra"]
+
+    it "finds *Spec.hs files in the same directory" $
+        withTestDir $ \dir -> do
+            writeFile (dir </> "FooSpec.hs") ""
+            writeFile (dir </> "BarSpec.hs") ""
+            result <- discover dir
+            foundLocal result `shouldBe` ["BarSpec", "FooSpec"]
+
+    it "excludes Spec.hs from local specs" $
+        withTestDir $ \dir -> do
+            writeFile (dir </> "Spec.hs") ""
+            writeFile (dir </> "FooSpec.hs") ""
+            result <- discover dir
+            foundLocal result `shouldBe` ["FooSpec"]
+
+    it "ignores non-spec .hs files" $
+        withTestDir $ \dir -> do
+            writeFile (dir </> "Helper.hs") ""
+            writeFile (dir </> "FooSpec.hs") ""
+            result <- discover dir
+            foundLocal result `shouldBe` ["FooSpec"]
+
+    it "finds both subdirectory and local specs" $
+        withTestDir $ \dir -> do
+            createSubdir dir "Foo"
+            writeFile (dir </> "BarSpec.hs") ""
+            result <- discover dir
+            found result `shouldBe` ["Foo"]
+            foundLocal result `shouldBe` ["BarSpec"]
 
 withTestDir :: (FilePath -> IO a) -> IO a
 withTestDir = withSystemTempDirectory "hspec-discover-discover-test"

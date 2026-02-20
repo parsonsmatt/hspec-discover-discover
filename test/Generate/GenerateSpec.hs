@@ -22,7 +22,7 @@ spec :: Spec
 spec = do
     it "generates correct output for Main module" $ do
         let
-            output = generate defaultConfig ["Bar", "Foo"]
+            output = generate defaultConfig (DiscoverResult ["Bar", "Foo"] [] [])
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -43,7 +43,7 @@ spec = do
 
     it "omits main when module name is not Main" $ do
         let
-            output = generate defaultConfig{moduleName = "MySpec"} ["Foo"]
+            output = generate defaultConfig{moduleName = "MySpec"} (DiscoverResult ["Foo"] [] [])
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -59,5 +59,47 @@ spec = do
 
     it "includes LINE pragma with original path" $ do
         let
-            output = generate defaultConfig{originalPath = "some/path/Spec.hs"} ["Foo"]
+            output = generate defaultConfig{originalPath = "some/path/Spec.hs"} (DiscoverResult ["Foo"] [] [])
         output `shouldSatisfy` isInfixOf (pack "{-# LINE 1 \"some/path/Spec.hs\" #-}")
+
+    it "generates imports and describes for local specs" $ do
+        let
+            output = generate defaultConfig (DiscoverResult [] ["BarSpec", "FooSpec"] [])
+        output
+            `shouldBe` unlines
+                [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "module Main (main) where"
+                , ""
+                , "import Test.Hspec"
+                , "import qualified BarSpec"
+                , "import qualified FooSpec"
+                , ""
+                , "main :: IO ()"
+                , "main = hspec spec"
+                , ""
+                , "spec :: Spec"
+                , "spec = do"
+                , "  describe \"Bar\" BarSpec.spec"
+                , "  describe \"Foo\" FooSpec.spec"
+                ]
+
+    it "generates output for both subdirectory and local specs" $ do
+        let
+            output = generate defaultConfig (DiscoverResult ["Sub"] ["LocalSpec"] [])
+        output
+            `shouldBe` unlines
+                [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "module Main (main) where"
+                , ""
+                , "import Test.Hspec"
+                , "import qualified Sub.Spec"
+                , "import qualified LocalSpec"
+                , ""
+                , "main :: IO ()"
+                , "main = hspec spec"
+                , ""
+                , "spec :: Spec"
+                , "spec = do"
+                , "  describe \"Sub\" Sub.Spec.spec"
+                , "  describe \"Local\" LocalSpec.spec"
+                ]
