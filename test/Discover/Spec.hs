@@ -73,13 +73,6 @@ spec = do
             result <- discover dir "Spec.hs"
             foundLocal result `shouldBe` ["FooSpec"]
 
-    it "ignores *Spec.hs files starting with lowercase" $
-        withTestDir $ \dir -> do
-            writeFile (dir </> "fooSpec.hs") ""
-            writeFile (dir </> "FooSpec.hs") ""
-            result <- discover dir "Spec.hs"
-            foundLocal result `shouldBe` ["FooSpec"]
-
     it "finds both subdirectory and local specs" $
         withTestDir $ \dir -> do
             createSubdir dir "Foo"

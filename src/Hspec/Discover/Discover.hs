@@ -18,7 +18,6 @@ module Hspec.Discover.Discover
     , DiscoverResult (..)
     ) where
 
-import Data.Char (isUpper)
 import Data.List (sort)
 import qualified Data.Text as T
 import Data.Text.Lazy (Text)
@@ -151,7 +150,7 @@ discover dir subdirFilename = do
                     then go result{foundLocal = T.pack (dropExtension e) : foundLocal result} es
                     else go result es
 
-    isLocalSpec (c : rest) = isUpper c && T.isSuffixOf "Spec.hs" (T.pack rest)
+    isLocalSpec (_ : rest) = T.isSuffixOf "Spec.hs" (T.pack rest)
     isLocalSpec _ = False
 
 -- | Generate Haskell source code that imports and runs the discovered test
