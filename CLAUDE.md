@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-hspec-discover-discover is a GHC preprocessor for hspec that discovers test modules in immediate subdirectories (`Spec.hs`) and co-located `*Spec.hs` files. Built with Stack (LTS 24.31), uses `package.yaml` (hpack) for package configuration.
+hspec-discover-discover is a GHC preprocessor for hspec that discovers test modules in immediate subdirectories (configurable filename, default `Spec.hs`) and co-located `*Spec.hs` files. The subdirectory filename can be changed via `--subdir-file`. Built with Stack (LTS 24.31), uses `package.yaml` (hpack) for package configuration.
 
 ## Build Commands
 

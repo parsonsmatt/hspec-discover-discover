@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | A GHC preprocessor that discovers hspec test modules. It finds both
--- @Spec.hs@ files in immediate subdirectories (e.g. @test\/Foo\/Spec.hs@) and
--- @*Spec.hs@ files in the same directory as the entry point (e.g.
--- @test\/FooSpec.hs@).
+-- a configurable file (default @Spec.hs@) in immediate subdirectories
+-- (e.g. @test\/Foo\/Spec.hs@) and @*Spec.hs@ files in the same directory as
+-- the entry point (e.g. @test\/FooSpec.hs@).
 --
 -- Intended to be used as a GHC preprocessor:
 --
@@ -51,22 +51,22 @@ data Config = Config
     }
     deriving (Show, Eq)
 
--- | Result of scanning a directory for @Spec.hs@ files.
+-- | Result of scanning a directory for spec files.
 data DiscoverResult = DiscoverResult
     { found :: [T.Text]
-    -- ^ Subdirectory names that contain a @Spec.hs@ (sorted)
+    -- ^ Subdirectory names that contain the subdir file (sorted)
     , foundLocal :: [T.Text]
     -- ^ @*Spec.hs@ module names in the same directory (sorted), e.g. @["FooSpec"]@
     , missing :: [T.Text]
-    -- ^ Subdirectory names that do not contain a @Spec.hs@ (sorted)
+    -- ^ Subdirectory names that do not contain the subdir file (sorted)
     }
     deriving (Show, Eq)
 
 -- | Main entry point. Parses command-line arguments, discovers test modules,
 -- and writes the generated Haskell source to the output file.
 --
--- Warns on stderr for each subdirectory missing a @Spec.hs@, and exits with
--- failure if no test modules are found.
+-- Warns on stderr for each subdirectory missing the configured subdir file,
+-- and exits with failure if no test modules are found.
 run :: IO ()
 run = do
     config <- Opts.execParser configParserInfo
@@ -99,8 +99,8 @@ configParserInfo :: ParserInfo Config
 configParserInfo = Opts.info (configParser Opts.<**> Opts.helper) Opts.fullDesc
 
 -- | Command-line argument parser. Expects three positional arguments
--- (original path, input path, output path) and an optional @--module-name@
--- flag.
+-- (original path, input path, output path) and optional @--module-name@ and
+-- @--subdir-file@ flags.
 configParser :: Parser Config
 configParser =
     Config
@@ -157,7 +157,8 @@ discover dir subdirFilename = do
 -- | Generate Haskell source code that imports and runs the discovered test
 -- modules. Each module is wrapped in a @describe@ block — subdirectory
 -- modules use the directory name as the label, and local modules use the
--- module name with the @Spec@ suffix stripped.
+-- module name with the @Spec@ suffix stripped. The subdirectory module name
+-- is derived from 'subdirFile' (e.g. @SubTest.hs@ → @SubTest@).
 --
 -- When 'moduleName' is @Main@, a @main@ function is generated that calls
 -- @hspec spec@. Otherwise, only @spec@ is exported.

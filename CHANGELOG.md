@@ -8,4 +8,8 @@ and this project adheres to the
 
 ## Unreleased
 
+- Add `--subdir-file` option to configure the filename looked for in
+  subdirectories (default: `Spec.hs`). Co-located `*Spec.hs` discovery is
+  unaffected.
+
 ## 0.1.0.0 - YYYY-MM-DD

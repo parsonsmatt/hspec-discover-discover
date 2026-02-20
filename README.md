@@ -80,11 +80,25 @@ Pass options via `-optF` in your GHC options:
 - `--module-name=NAME` — Set the generated module name (default: `Main`).
   When the module name is not `Main`, the `main` function is omitted and only
   `spec` is exported.
+- `--subdir-file=FILENAME` — Set the filename to look for in subdirectories
+  (default: `Spec.hs`). This is useful when other tooling globs on `*Spec.hs`
+  and interferes with the subdirectory entry points. Only affects subdirectory
+  lookup — co-located `*Spec.hs` discovery is unchanged.
+
+For example, to look for `SubTest.hs` instead of `Spec.hs` in subdirectories:
+
+```haskell
+{-# OPTIONS_GHC -F -pgmF hspec-discover-discover -optF --subdir-file=SubTest.hs #-}
+```
+
+This would discover `test/Foo/SubTest.hs` and generate
+`import qualified Foo.SubTest`.
 
 ### Missing specs
 
-If a subdirectory does not contain a `Spec.hs`, a warning is printed to stderr.
-If no spec modules are found at all, the preprocessor exits with an error.
+If a subdirectory does not contain the configured subdir file (default
+`Spec.hs`), a warning is printed to stderr. If no spec modules are found at
+all, the preprocessor exits with an error.
 
 ## Installation
 
@@ -106,8 +120,8 @@ tests:
 
 | Feature | hspec-discover | hspec-discover-discover |
 |---|---|---|
-| Discovery | Recursive `*Spec.hs` | Immediate subdirs with `Spec.hs` + co-located `*Spec.hs` |
-| Naming | Any file ending in `Spec.hs` | `Spec.hs` in subdirs, or `*Spec.hs` in same directory |
+| Discovery | Recursive `*Spec.hs` | Immediate subdirs with configurable file (default `Spec.hs`) + co-located `*Spec.hs` |
+| Naming | Any file ending in `Spec.hs` | Configurable file in subdirs, or `*Spec.hs` in same directory |
 | Grouping | Flat list of specs | One `describe` per subdirectory or local spec |
 
 ## License
