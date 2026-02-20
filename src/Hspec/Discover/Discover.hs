@@ -1,9 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | A GHC preprocessor that discovers hspec test modules in immediate
--- subdirectories. Unlike @hspec-discover@, which recursively finds all
--- @*Spec.hs@ files, this tool looks for files named @Spec.hs@ in the
--- immediate subdirectories of the source file's directory.
+-- | A GHC preprocessor that discovers hspec test modules. It finds both
+-- @Spec.hs@ files in immediate subdirectories (e.g. @test\/Foo\/Spec.hs@) and
+-- @*Spec.hs@ files in the same directory as the entry point (e.g.
+-- @test\/FooSpec.hs@).
 --
 -- Intended to be used as a GHC preprocessor:
 --
@@ -18,7 +18,9 @@ module Hspec.Discover.Discover
     , DiscoverResult (..)
     ) where
 
-import Data.List (isSuffixOf, sort)
+import Data.Char (isUpper)
+import Data.List (sort)
+import qualified Data.Text as T
 import Data.Text.Lazy (Text)
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as TLB
@@ -27,7 +29,7 @@ import Options.Applicative (Parser, ParserInfo)
 import qualified Options.Applicative as Opts
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.Exit (exitFailure)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (dropExtension, takeDirectory, (</>))
 import System.IO (stderr)
 
 -- | Preprocessor configuration, parsed from command-line arguments.
@@ -49,11 +51,11 @@ data Config = Config
 
 -- | Result of scanning a directory for @Spec.hs@ files.
 data DiscoverResult = DiscoverResult
-    { found :: [String]
+    { found :: [T.Text]
     -- ^ Subdirectory names that contain a @Spec.hs@ (sorted)
-    , foundLocal :: [String]
+    , foundLocal :: [T.Text]
     -- ^ @*Spec.hs@ module names in the same directory (sorted), e.g. @["FooSpec"]@
-    , missing :: [String]
+    , missing :: [T.Text]
     -- ^ Subdirectory names that do not contain a @Spec.hs@ (sorted)
     }
     deriving (Show, Eq)
@@ -73,14 +75,16 @@ run = do
         ( \d ->
             warn $
                 "hspec-discover-discover: "
-                    <> TLB.fromString (dir </> d)
+                    <> TLB.fromString dir
+                    <> "/"
+                    <> TLB.fromText d
                     <> " is missing a Spec.hs"
         )
         (missing result)
     if null (found result) && null (foundLocal result)
         then do
             warn $
-                "hspec-discover-discover: no Spec.hs found in subdirectories of "
+                "hspec-discover-discover: no spec modules found in "
                     <> TLB.fromString dir
             exitFailure
         else
@@ -108,9 +112,10 @@ configParser =
                 <> Opts.help "Module name for the generated file"
             )
 
--- | Scan a directory for immediate subdirectories containing @Spec.hs@.
--- Returns both the found and missing subdirectory names, sorted
--- alphabetically. Non-directory entries are ignored.
+-- | Scan a directory for test modules. Finds @Spec.hs@ in immediate
+-- subdirectories and @*Spec.hs@ files (with uppercase first letter) in the
+-- directory itself. Returns found, local, and missing names, sorted
+-- alphabetically.
 discover :: FilePath -> IO DiscoverResult
 discover dir = do
     entries <- listDirectory dir
@@ -129,19 +134,20 @@ discover dir = do
             then do
                 hasSpec <- doesFileExist (dir </> e </> "Spec.hs")
                 if hasSpec
-                    then go result{found = e : found result} es
-                    else go result{missing = e : missing result} es
+                    then go result{found = T.pack e : found result} es
+                    else go result{missing = T.pack e : missing result} es
             else
                 if isLocalSpec e
-                    then go result{foundLocal = dropHs e : foundLocal result} es
+                    then go result{foundLocal = T.pack (dropExtension e) : foundLocal result} es
                     else go result es
 
-    isLocalSpec e = "Spec.hs" `isSuffixOf` e && e /= "Spec.hs"
-    dropHs e = take (length e - 3) e
+    isLocalSpec (c : rest) = isUpper c && T.isSuffixOf "Spec.hs" (T.pack rest)
+    isLocalSpec _ = False
 
 -- | Generate Haskell source code that imports and runs the discovered test
--- modules. Each module is wrapped in a @describe@ block using the
--- subdirectory name as the label.
+-- modules. Each module is wrapped in a @describe@ block — subdirectory
+-- modules use the directory name as the label, and local modules use the
+-- module name with the @Spec@ suffix stripped.
 --
 -- When 'moduleName' is @Main@, a @main@ function is generated that calls
 -- @hspec spec@. Otherwise, only @spec@ is exported.
@@ -154,10 +160,10 @@ generate config result =
             <> newline
             <> line "import Test.Hspec"
             <> foldMap
-                (\m -> line ("import qualified " <> TLB.fromString m <> ".Spec"))
+                (\m -> line ("import qualified " <> TLB.fromText m <> ".Spec"))
                 (found result)
             <> foldMap
-                (\m -> line ("import qualified " <> TLB.fromString m))
+                (\m -> line ("import qualified " <> TLB.fromText m))
                 (foundLocal result)
             <> newline
             <> mainDecl
@@ -167,9 +173,9 @@ generate config result =
                 ( \m ->
                     line
                         ( "  describe "
-                            <> TLB.fromString (show m)
+                            <> quoted m
                             <> " "
-                            <> TLB.fromString m
+                            <> TLB.fromText m
                             <> ".Spec.spec"
                         )
                 )
@@ -178,9 +184,9 @@ generate config result =
                 ( \m ->
                     line
                         ( "  describe "
-                            <> TLB.fromString (show (stripSpecSuffix m))
+                            <> quoted (stripSpecSuffix m)
                             <> " "
-                            <> TLB.fromString m
+                            <> TLB.fromText m
                             <> ".spec"
                         )
                 )
@@ -198,10 +204,11 @@ generate config result =
                 <> newline
         | otherwise = mempty
 
-    stripSpecSuffix :: String -> String
-    stripSpecSuffix s
-        | "Spec" `isSuffixOf` s = take (length s - 4) s
-        | otherwise = s
+    stripSpecSuffix :: T.Text -> T.Text
+    stripSpecSuffix t = maybe t id (T.stripSuffix "Spec" t)
+
+    quoted :: T.Text -> Builder
+    quoted t = "\"" <> TLB.fromText t <> "\""
 
 line :: Builder -> Builder
 line b = b <> TLB.singleton '\n'

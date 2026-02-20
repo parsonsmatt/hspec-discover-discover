@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Discover.Spec (spec) where
 
 import Test.Hspec
@@ -67,6 +69,13 @@ spec = do
     it "ignores non-spec .hs files" $
         withTestDir $ \dir -> do
             writeFile (dir </> "Helper.hs") ""
+            writeFile (dir </> "FooSpec.hs") ""
+            result <- discover dir
+            foundLocal result `shouldBe` ["FooSpec"]
+
+    it "ignores *Spec.hs files starting with lowercase" $
+        withTestDir $ \dir -> do
+            writeFile (dir </> "fooSpec.hs") ""
             writeFile (dir </> "FooSpec.hs") ""
             result <- discover dir
             foundLocal result `shouldBe` ["FooSpec"]

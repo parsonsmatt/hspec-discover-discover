@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-hspec-discover-discover is a GHC preprocessor for hspec that discovers test modules in immediate subdirectories. Built with Stack (LTS 24.31), uses `package.yaml` (hpack) for package configuration.
+hspec-discover-discover is a GHC preprocessor for hspec that discovers test modules in immediate subdirectories (`Spec.hs`) and co-located `*Spec.hs` files. Built with Stack (LTS 24.31), uses `package.yaml` (hpack) for package configuration.
 
 ## Build Commands
 
@@ -41,4 +41,4 @@ Run `make format` (or `fourmolu -i **/*.hs`) before committing. The project uses
 
 ## Adding Tests
 
-The test suite dogfoods `hspec-discover-discover` as its own preprocessor. To add a new test group, create a `test/<Name>/Spec.hs` module that exports `spec :: Spec` — it will be automatically discovered.
+The test suite dogfoods `hspec-discover-discover` as its own preprocessor. To add a new test group, either create a `test/<Name>/Spec.hs` module or a `test/<Name>Spec.hs` module that exports `spec :: Spec` — it will be automatically discovered.
