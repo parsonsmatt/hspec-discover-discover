@@ -16,6 +16,7 @@ defaultConfig =
         , inputPath = "test/Spec.hs"
         , outputPath = "test/Spec.hs"
         , moduleName = "Main"
+        , subdirFile = "Spec.hs"
         }
 
 spec :: Spec
@@ -102,4 +103,23 @@ spec = do
                 , "spec = do"
                 , "  describe \"Sub\" Sub.Spec.spec"
                 , "  describe \"Local\" LocalSpec.spec"
+                ]
+
+    it "generates imports using custom subdir file" $ do
+        let
+            output = generate defaultConfig{subdirFile = "SubTest.hs"} (DiscoverResult ["Foo"] [] [])
+        output
+            `shouldBe` unlines
+                [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "module Main (main) where"
+                , ""
+                , "import Test.Hspec"
+                , "import qualified Foo.SubTest"
+                , ""
+                , "main :: IO ()"
+                , "main = hspec spec"
+                , ""
+                , "spec :: Spec"
+                , "spec = do"
+                , "  describe \"Foo\" Foo.SubTest.spec"
                 ]

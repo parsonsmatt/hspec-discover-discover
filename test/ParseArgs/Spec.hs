@@ -19,6 +19,7 @@ spec = do
                 inputPath config `shouldBe` "b"
                 outputPath config `shouldBe` "c"
                 moduleName config `shouldBe` "Main"
+                subdirFile config `shouldBe` "Spec.hs"
 
     it "parses --module-name flag" $ do
         case parseArgs ["a", "b", "c", "--module-name=MySpec"] of
@@ -29,6 +30,16 @@ spec = do
         case parseArgs ["a", "b", "c", "--module-name", "MySpec"] of
             Nothing -> expectationFailure "expected successful parse"
             Just config -> moduleName config `shouldBe` "MySpec"
+
+    it "parses --subdir-file flag" $ do
+        case parseArgs ["a", "b", "c", "--subdir-file=SubTest.hs"] of
+            Nothing -> expectationFailure "expected successful parse"
+            Just config -> subdirFile config `shouldBe` "SubTest.hs"
+
+    it "parses --subdir-file flag with space" $ do
+        case parseArgs ["a", "b", "c", "--subdir-file", "SubTest.hs"] of
+            Nothing -> expectationFailure "expected successful parse"
+            Just config -> subdirFile config `shouldBe` "SubTest.hs"
 
     it "fails with too few args" $ do
         parseArgs ["a", "b"] `shouldBe` Nothing

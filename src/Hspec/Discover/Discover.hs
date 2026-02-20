@@ -46,6 +46,8 @@ data Config = Config
     -- ^ Output file path where generated code should be written
     , moduleName :: String
     -- ^ Module name for the generated file (default: @Main@)
+    , subdirFile :: String
+    -- ^ Filename to look for in subdirectories (default: @Spec.hs@)
     }
     deriving (Show, Eq)
 
@@ -70,7 +72,7 @@ run = do
     config <- Opts.execParser configParserInfo
     let
         dir = takeDirectory (originalPath config)
-    result <- discover dir
+    result <- discover dir (subdirFile config)
     mapM_
         ( \d ->
             warn $
@@ -78,7 +80,8 @@ run = do
                     <> TLB.fromString dir
                     <> "/"
                     <> TLB.fromText d
-                    <> " is missing a Spec.hs"
+                    <> " is missing a "
+                    <> TLB.fromString (subdirFile config)
         )
         (missing result)
     if null (found result) && null (foundLocal result)
@@ -111,13 +114,20 @@ configParser =
                 <> Opts.metavar "NAME"
                 <> Opts.help "Module name for the generated file"
             )
+        <*> Opts.option
+            Opts.str
+            ( Opts.long "subdir-file"
+                <> Opts.value "Spec.hs"
+                <> Opts.metavar "FILENAME"
+                <> Opts.help "Filename to look for in subdirectories"
+            )
 
--- | Scan a directory for test modules. Finds @Spec.hs@ in immediate
+-- | Scan a directory for test modules. Finds the given filename in immediate
 -- subdirectories and @*Spec.hs@ files (with uppercase first letter) in the
 -- directory itself. Returns found, local, and missing names, sorted
 -- alphabetically.
-discover :: FilePath -> IO DiscoverResult
-discover dir = do
+discover :: FilePath -> String -> IO DiscoverResult
+discover dir subdirFilename = do
     entries <- listDirectory dir
     go (DiscoverResult [] [] []) entries
   where
@@ -132,7 +142,7 @@ discover dir = do
         isDir <- doesDirectoryExist (dir </> e)
         if isDir
             then do
-                hasSpec <- doesFileExist (dir </> e </> "Spec.hs")
+                hasSpec <- doesFileExist (dir </> e </> subdirFilename)
                 if hasSpec
                     then go result{found = T.pack e : found result} es
                     else go result{missing = T.pack e : missing result} es
@@ -160,7 +170,7 @@ generate config result =
             <> newline
             <> line "import Test.Hspec"
             <> foldMap
-                (\m -> line ("import qualified " <> TLB.fromText m <> ".Spec"))
+                (\m -> line ("import qualified " <> TLB.fromText m <> "." <> subdirMod))
                 (found result)
             <> foldMap
                 (\m -> line ("import qualified " <> TLB.fromText m))
@@ -176,7 +186,9 @@ generate config result =
                             <> quoted m
                             <> " "
                             <> TLB.fromText m
-                            <> ".Spec.spec"
+                            <> "."
+                            <> subdirMod
+                            <> ".spec"
                         )
                 )
                 (found result)
@@ -192,6 +204,9 @@ generate config result =
                 )
                 (foundLocal result)
   where
+    subdirMod :: Builder
+    subdirMod = TLB.fromString (dropExtension (subdirFile config))
+
     exports :: Builder
     exports
         | moduleName config == "Main" = "main"
