@@ -70,6 +70,8 @@ test-suite hspec-discover-discover-test
       Discover.Spec
       Generate.GenerateSpec
       Generate.Spec
+      Integration.IntegrationSpec
+      Integration.Spec
       ParseArgs.Spec
       Pragmas.PragmasSpec
       Pragmas.Spec
@@ -93,6 +95,7 @@ test-suite hspec-discover-discover-test
     , hspec
     , hspec-discover-discover
     , optparse-applicative
+    , process
     , temporary
     , text
   default-language: Haskell2010

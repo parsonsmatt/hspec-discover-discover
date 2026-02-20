@@ -4,6 +4,8 @@ module Pragmas.PragmasSpec (spec) where
 
 import Test.Hspec
 
+import qualified Data.Text as T
+
 import Hspec.Discover.Discover (extractPragmas)
 
 spec :: Spec
@@ -35,3 +37,17 @@ spec = do
     it "skips blank lines between pragmas" $ do
         extractPragmas "{-# LANGUAGE GADTs #-}\n\n{-# LANGUAGE TypeFamilies #-}\nmodule Foo where\n"
             `shouldBe` ["{-# LANGUAGE GADTs #-}", "{-# LANGUAGE TypeFamilies #-}"]
+
+    it "keeps warning pragmas and filters pgmF from real-world header" $ do
+        let
+            input =
+                T.unlines
+                    [ "{-# OPTIONS_GHC -F -pgmF hspec-discover-discover -optF --module-name=Spec -optF --subdir-file=TestGroup.hs #-}"
+                    , "{-# OPTIONS_GHC -O0 #-}"
+                    , "{-# OPTIONS_GHC -fno-warn-deprecations -Wwarn -fno-warn-prepositive-qualified-module #-}"
+                    ]
+        extractPragmas input
+            `shouldBe`
+                [ "{-# OPTIONS_GHC -O0 #-}"
+                , "{-# OPTIONS_GHC -fno-warn-deprecations -Wwarn -fno-warn-prepositive-qualified-module #-}"
+                ]

@@ -68,4 +68,5 @@ tests:
     - hspec-discover-discover
     - hspec
     - optparse-applicative
+    - process
     - temporary

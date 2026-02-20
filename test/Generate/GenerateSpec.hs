@@ -35,6 +35,7 @@ spec = do
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module Main (main) where"
                 , ""
                 , "import Test.Hspec"
@@ -56,6 +57,7 @@ spec = do
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module MySpec (spec) where"
                 , ""
                 , "import Test.Hspec"
@@ -77,6 +79,7 @@ spec = do
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module Main (main) where"
                 , ""
                 , "import Test.Hspec"
@@ -98,6 +101,7 @@ spec = do
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module Main (main) where"
                 , ""
                 , "import Test.Hspec"
@@ -119,6 +123,7 @@ spec = do
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module Main (main) where"
                 , ""
                 , "import Test.Hspec"
@@ -132,20 +137,21 @@ spec = do
                 , "  describe \"Foo\" Foo.SubTest.spec"
                 ]
 
-    it "includes user pragmas in output" $ do
+    it "includes user pragmas before -w in output" $ do
         let
             output =
                 generate
                     defaultConfig
                     defaultParams
                         { subdirSpecs = ["Foo"]
-                        , pragmas = ["{-# LANGUAGE OverloadedStrings #-}", "{-# OPTIONS_GHC -Wall #-}"]
+                        , pragmas = ["{-# LANGUAGE OverloadedStrings #-}", "{-# OPTIONS_GHC -O0 #-}"]
                         }
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
                 , "{-# LANGUAGE OverloadedStrings #-}"
-                , "{-# OPTIONS_GHC -Wall #-}"
+                , "{-# OPTIONS_GHC -O0 #-}"
+                , "{-# OPTIONS_GHC -w #-}"
                 , "module Main (main) where"
                 , ""
                 , "import Test.Hspec"

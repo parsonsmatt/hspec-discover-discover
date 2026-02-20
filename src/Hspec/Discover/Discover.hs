@@ -243,6 +243,7 @@ generate config params =
         mconcat
             [ line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
             , foldMap (line . TLB.fromText) (pragmas params)
+            , line "{-# OPTIONS_GHC -w #-}"
             , line ("module " <> TLB.fromString (moduleName config) <> " (" <> exports <> ") where")
             , newline
             , line "import Test.Hspec"
