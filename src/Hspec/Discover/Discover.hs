@@ -1,4 +1,6 @@
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StrictData #-}
 
 -- | A GHC preprocessor that discovers hspec test modules. It finds both
 -- a configurable file (default @Spec.hs@) in immediate subdirectories
@@ -13,17 +15,26 @@ module Hspec.Discover.Discover
     , configParser
     , configParserInfo
     , discover
+    , extractPragmas
     , generate
+    , validateResult
     , Config (..)
     , DiscoverResult (..)
+    , GenerateParams (..)
+    , InvalidDiscovery (..)
     ) where
 
-import Data.List (sort)
+import Control.Concurrent.Async (mapConcurrently)
+import Data.Foldable (forM_)
+import Data.List (isSuffixOf)
+import Data.Maybe (fromMaybe)
+import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import Data.Text.Lazy (Text)
 import Data.Text.Lazy.Builder (Builder)
 import qualified Data.Text.Lazy.Builder as TLB
-import qualified Data.Text.Lazy.IO as TL
+import qualified Data.Text.Lazy.IO as TLIO
 import Options.Applicative (Parser, ParserInfo)
 import qualified Options.Applicative as Opts
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
@@ -48,18 +59,70 @@ data Config = Config
     , subdirFile :: String
     -- ^ Filename to look for in subdirectories (default: @Spec.hs@)
     }
-    deriving (Show, Eq)
+    deriving stock (Show, Eq)
 
 -- | Result of scanning a directory for spec files.
 data DiscoverResult = DiscoverResult
-    { found :: [T.Text]
-    -- ^ Subdirectory names that contain the subdir file (sorted)
-    , foundLocal :: [T.Text]
-    -- ^ @*Spec.hs@ module names in the same directory (sorted), e.g. @["FooSpec"]@
-    , missing :: [T.Text]
-    -- ^ Subdirectory names that do not contain the subdir file (sorted)
+    { found :: Set.Set T.Text
+    -- ^ Subdirectory names that contain the subdir file
+    , foundLocal :: Set.Set T.Text
+    -- ^ @*Spec.hs@ module names in the same directory, e.g. @["FooSpec"]@
+    , missing :: Set.Set T.Text
+    -- ^ Subdirectory names that do not contain the subdir file
     }
-    deriving (Show, Eq)
+    deriving stock (Show, Eq)
+
+instance Semigroup DiscoverResult where
+    a <> b =
+        DiscoverResult
+            { found = found a <> found b
+            , foundLocal = foundLocal a <> foundLocal b
+            , missing = missing a <> missing b
+            }
+
+instance Monoid DiscoverResult where
+    mempty = DiscoverResult{found = mempty, foundLocal = mempty, missing = mempty}
+
+-- | Errors that can occur when validating discovery results.
+data InvalidDiscovery
+    = -- | No spec modules were found at all
+      NoSpecsFound FilePath
+    | -- | Some subdirectories are missing the configured spec file
+      MissingSubdirSpecs FilePath String [T.Text]
+    --                    dir     filename  subdirs
+    deriving stock (Show, Eq)
+
+-- | Validated discovery result ready for code generation.
+-- Invariant: at least one of 'subdirSpecs' or 'localSpecs' is non-empty.
+data GenerateParams = GenerateParams
+    { subdirSpecs :: [T.Text]
+    -- ^ Subdirectory names that contain the subdir file
+    , localSpecs :: [T.Text]
+    -- ^ Local @*Spec.hs@ module names
+    , pragmas :: [T.Text]
+    -- ^ Pragma lines extracted from the source file
+    }
+    deriving stock (Show, Eq)
+
+-- | Validate a 'DiscoverResult', returning either an error or validated
+-- parameters ready for code generation.
+--
+-- Fails if any subdirectory is missing the configured file ('MissingSubdirSpecs'),
+-- or if no specs were found at all ('NoSpecsFound'). Missing subdirs take
+-- priority over empty results.
+validateResult :: FilePath -> String -> DiscoverResult -> Either InvalidDiscovery GenerateParams
+validateResult dir subdirFilename result
+    | not (Set.null (missing result)) =
+        Left (MissingSubdirSpecs dir subdirFilename (Set.toAscList (missing result)))
+    | Set.null (found result) && Set.null (foundLocal result) =
+        Left (NoSpecsFound dir)
+    | otherwise =
+        Right
+            GenerateParams
+                { subdirSpecs = Set.toAscList (found result)
+                , localSpecs = Set.toAscList (foundLocal result)
+                , pragmas = []
+                }
 
 -- | Main entry point. Parses command-line arguments, discovers test modules,
 -- and writes the generated Haskell source to the output file.
@@ -70,27 +133,30 @@ run :: IO ()
 run = do
     config <- Opts.execParser configParserInfo
     let
-        dir = takeDirectory (originalPath config)
-    result <- discover dir (subdirFile config)
-    mapM_
-        ( \d ->
-            warn $
-                "hspec-discover-discover: "
-                    <> TLB.fromString dir
-                    <> "/"
-                    <> TLB.fromText d
-                    <> " is missing a "
-                    <> TLB.fromString (subdirFile config)
-        )
-        (missing result)
-    if null (found result) && null (foundLocal result)
-        then do
+        specDir = takeDirectory (originalPath config)
+    result <- discover specDir (subdirFile config)
+    case validateResult specDir (subdirFile config) result of
+        Left (MissingSubdirSpecs dir filename dirs) -> do
+            forM_ dirs $ \subdir ->
+                warn $
+                    mconcat
+                        [ "hspec-discover-discover: "
+                        , TLB.fromString dir
+                        , "/"
+                        , TLB.fromText subdir
+                        , " is missing a "
+                        , TLB.fromString filename
+                        ]
+            exitFailure
+        Left (NoSpecsFound dir) -> do
             warn $
                 "hspec-discover-discover: no spec modules found in "
                     <> TLB.fromString dir
             exitFailure
-        else
-            TL.writeFile (outputPath config) (generate config result)
+        Right params -> do
+            sourceContent <- TIO.readFile (inputPath config)
+            let userPragmas = extractPragmas sourceContent
+            TLIO.writeFile (outputPath config) (generate config params{pragmas = userPragmas})
 
 -- | 'ParserInfo' for use with @optparse-applicative@. Includes @--help@
 -- support.
@@ -122,36 +188,46 @@ configParser =
             )
 
 -- | Scan a directory for test modules. Finds the given filename in immediate
--- subdirectories and @*Spec.hs@ files (with uppercase first letter) in the
--- directory itself. Returns found, local, and missing names, sorted
--- alphabetically.
+-- subdirectories and @*Spec.hs@ files in the same directory. Filesystem
+-- checks run concurrently.
 discover :: FilePath -> String -> IO DiscoverResult
 discover dir subdirFilename = do
     entries <- listDirectory dir
-    go (DiscoverResult [] [] []) entries
+    mconcat <$> mapConcurrently classify entries
   where
-    go result [] =
-        pure
-            result
-                { found = sort (found result)
-                , foundLocal = sort (foundLocal result)
-                , missing = sort (missing result)
-                }
-    go result (e : es) = do
-        isDir <- doesDirectoryExist (dir </> e)
+    classify entry = do
+        let name = T.pack entry
+            entryPath = dir </> entry
+        isDir <- doesDirectoryExist entryPath
         if isDir
             then do
-                hasSpec <- doesFileExist (dir </> e </> subdirFilename)
-                if hasSpec
-                    then go result{found = T.pack e : found result} es
-                    else go result{missing = T.pack e : missing result} es
+                hasSpec <- doesFileExist (entryPath </> subdirFilename)
+                pure $
+                    if hasSpec
+                        then mempty{found = Set.singleton name}
+                        else mempty{missing = Set.singleton name}
             else
-                if isLocalSpec e
-                    then go result{foundLocal = T.pack (dropExtension e) : foundLocal result} es
-                    else go result es
+                pure $
+                    if isLocalSpec entry
+                        then mempty{foundLocal = Set.singleton (T.pack (dropExtension entry))}
+                        else mempty
 
-    isLocalSpec (_ : rest) = T.isSuffixOf "Spec.hs" (T.pack rest)
+    -- Skip the first character so that "Spec.hs" itself is not matched.
+    isLocalSpec (_ : rest) = "Spec.hs" `isSuffixOf` rest
     isLocalSpec _ = False
+
+-- | Extract pragma lines from the top of a Haskell source file.
+-- Returns lines containing @{-#@ and @#-}@, stopping at the @module@ line
+-- or first non-pragma, non-blank line. Filters out the preprocessor invocation
+-- pragma (any line containing @-pgmF@).
+extractPragmas :: T.Text -> [T.Text]
+extractPragmas =
+    filter (not . T.isInfixOf "-pgmF")
+        . takeWhile isPragma
+        . filter (not . T.null . T.strip)
+        . T.lines
+  where
+    isPragma l = T.isInfixOf "{-#" l && T.isInfixOf "#-}" l
 
 -- | Generate Haskell source code that imports and runs the discovered test
 -- modules. Each module is wrapped in a @describe@ block — subdirectory
@@ -161,49 +237,38 @@ discover dir subdirFilename = do
 --
 -- When 'moduleName' is @Main@, a @main@ function is generated that calls
 -- @hspec spec@. Otherwise, only @spec@ is exported.
-generate :: Config -> DiscoverResult -> Text
-generate config result =
+generate :: Config -> GenerateParams -> Text
+generate config params =
     TLB.toLazyText $
-        line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
-            <> line
-                ("module " <> TLB.fromString (moduleName config) <> " (" <> exports <> ") where")
-            <> newline
-            <> line "import Test.Hspec"
-            <> foldMap
-                (\m -> line ("import qualified " <> TLB.fromText m <> "." <> subdirMod))
-                (found result)
-            <> foldMap
-                (\m -> line ("import qualified " <> TLB.fromText m))
-                (foundLocal result)
-            <> newline
-            <> mainDecl
-            <> line "spec :: Spec"
-            <> line "spec = do"
-            <> foldMap
-                ( \m ->
-                    line
-                        ( "  describe "
-                            <> quoted m
-                            <> " "
-                            <> TLB.fromText m
-                            <> "."
-                            <> subdirMod
-                            <> ".spec"
-                        )
-                )
-                (found result)
-            <> foldMap
-                ( \m ->
-                    line
-                        ( "  describe "
-                            <> quoted (stripSpecSuffix m)
-                            <> " "
-                            <> TLB.fromText m
-                            <> ".spec"
-                        )
-                )
-                (foundLocal result)
+        mconcat
+            [ line ("{-# LINE 1 " <> TLB.fromString (show (originalPath config)) <> " #-}")
+            , foldMap (line . TLB.fromText) (pragmas params)
+            , line ("module " <> TLB.fromString (moduleName config) <> " (" <> exports <> ") where")
+            , newline
+            , line "import Test.Hspec"
+            , subdirImports
+            , localImports
+            , newline
+            , mainDecl
+            , line "spec :: Spec"
+            , line "spec = do"
+            , subdirDescribes
+            , localDescribes
+            ]
   where
+    Pair subdirImports subdirDescribes = foldMap subdirEntry (subdirSpecs params)
+    Pair localImports localDescribes = foldMap localEntry (localSpecs params)
+
+    subdirEntry modName =
+        Pair
+            (line ("import qualified " <> TLB.fromText modName <> "." <> subdirMod))
+            (line ("  describe " <> quoted modName <> " " <> TLB.fromText modName <> "." <> subdirMod <> ".spec"))
+
+    localEntry modName =
+        Pair
+            (line ("import qualified " <> TLB.fromText modName))
+            (line ("  describe " <> quoted (stripSpecSuffix modName) <> " " <> TLB.fromText modName <> ".spec"))
+
     subdirMod :: Builder
     subdirMod = TLB.fromString (dropExtension (subdirFile config))
 
@@ -214,16 +279,28 @@ generate config result =
 
     mainDecl
         | moduleName config == "Main" =
-            line "main :: IO ()"
-                <> line "main = hspec spec"
-                <> newline
+            mconcat
+                [ line "main :: IO ()"
+                , line "main = hspec spec"
+                , newline
+                ]
         | otherwise = mempty
 
     stripSpecSuffix :: T.Text -> T.Text
-    stripSpecSuffix t = maybe t id (T.stripSuffix "Spec" t)
+    stripSpecSuffix t = fromMaybe t (T.stripSuffix "Spec" t)
 
     quoted :: T.Text -> Builder
     quoted t = "\"" <> TLB.fromText t <> "\""
+
+-- | Strict pair of 'Builder's, used to accumulate imports and describes
+-- in a single pass without thunk buildup.
+data Pair = Pair Builder Builder
+
+instance Semigroup Pair where
+    Pair a1 b1 <> Pair a2 b2 = Pair (a1 <> a2) (b1 <> b2)
+
+instance Monoid Pair where
+    mempty = Pair mempty mempty
 
 line :: Builder -> Builder
 line b = b <> TLB.singleton '\n'
@@ -232,4 +309,4 @@ newline :: Builder
 newline = TLB.singleton '\n'
 
 warn :: Builder -> IO ()
-warn = TL.hPutStrLn stderr . TLB.toLazyText
+warn = TLIO.hPutStrLn stderr . TLB.toLazyText

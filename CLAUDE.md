@@ -26,12 +26,21 @@ make format                         # Format all Haskell files with fourmolu
   - `test/ParseArgs/Spec.hs` — Argument parsing tests
   - `test/Discover/Spec.hs` — Directory discovery tests
   - `test/Generate/Spec.hs` — Code generation tests
+  - `test/Pragmas/Spec.hs` — Pragma extraction tests
+  - `test/Validate/Spec.hs` — Validation tests
+- `docs/` — Project documentation
+  - `docs/ai-haskell-guide.md` — Haskell style guide for AI agents
+  - `docs/refactoring-notes.md` — Refactoring history and rationale
 - `package.yaml` — Package definition (hpack format, source of truth for dependencies and configuration)
 - `fourmolu.yaml` — Formatter configuration
 
 ## Formatting
 
 Run `make format` (or `fourmolu -i **/*.hs`) before committing. The project uses fourmolu with 4-space indentation, leading commas, and leading import/export style. CI checks formatting via Restyled.
+
+## Haskell Style Guide
+
+For detailed patterns and anti-patterns (strict data, monoid-based accumulation, concurrency, avoiding allocations, naming conventions, etc.), see [`docs/ai-haskell-guide.md`](docs/ai-haskell-guide.md). The checklist at the end of that document should be consulted when writing or reviewing code.
 
 ## Code Style
 

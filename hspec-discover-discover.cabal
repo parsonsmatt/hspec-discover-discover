@@ -34,7 +34,9 @@ library
       src
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
   build-depends:
-      base >=4.7 && <5
+      async
+    , base >=4.7 && <5
+    , containers
     , directory
     , filepath
     , optparse-applicative
@@ -51,7 +53,9 @@ executable hspec-discover-discover
       app
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      base >=4.7 && <5
+      async
+    , base >=4.7 && <5
+    , containers
     , directory
     , filepath
     , hspec-discover-discover
@@ -67,6 +71,10 @@ test-suite hspec-discover-discover-test
       Generate.GenerateSpec
       Generate.Spec
       ParseArgs.Spec
+      Pragmas.PragmasSpec
+      Pragmas.Spec
+      Validate.Spec
+      Validate.ValidateSpec
       Paths_hspec_discover_discover
   autogen-modules:
       Paths_hspec_discover_discover
@@ -77,7 +85,9 @@ test-suite hspec-discover-discover-test
       hspec-discover:hspec-discover
     , hspec-discover-discover:hspec-discover-discover
   build-depends:
-      base >=4.7 && <5
+      async
+    , base >=4.7 && <5
+    , containers
     , directory
     , filepath
     , hspec

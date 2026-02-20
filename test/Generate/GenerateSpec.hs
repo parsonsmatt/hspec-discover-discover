@@ -19,11 +19,19 @@ defaultConfig =
         , subdirFile = "Spec.hs"
         }
 
+defaultParams :: GenerateParams
+defaultParams =
+    GenerateParams
+        { subdirSpecs = []
+        , localSpecs = []
+        , pragmas = []
+        }
+
 spec :: Spec
 spec = do
     it "generates correct output for Main module" $ do
         let
-            output = generate defaultConfig (DiscoverResult ["Bar", "Foo"] [] [])
+            output = generate defaultConfig defaultParams{subdirSpecs = ["Bar", "Foo"]}
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -44,7 +52,7 @@ spec = do
 
     it "omits main when module name is not Main" $ do
         let
-            output = generate defaultConfig{moduleName = "MySpec"} (DiscoverResult ["Foo"] [] [])
+            output = generate defaultConfig{moduleName = "MySpec"} defaultParams{subdirSpecs = ["Foo"]}
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -60,12 +68,12 @@ spec = do
 
     it "includes LINE pragma with original path" $ do
         let
-            output = generate defaultConfig{originalPath = "some/path/Spec.hs"} (DiscoverResult ["Foo"] [] [])
+            output = generate defaultConfig{originalPath = "some/path/Spec.hs"} defaultParams{subdirSpecs = ["Foo"]}
         output `shouldSatisfy` isInfixOf (pack "{-# LINE 1 \"some/path/Spec.hs\" #-}")
 
     it "generates imports and describes for local specs" $ do
         let
-            output = generate defaultConfig (DiscoverResult [] ["BarSpec", "FooSpec"] [])
+            output = generate defaultConfig defaultParams{localSpecs = ["BarSpec", "FooSpec"]}
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -86,7 +94,7 @@ spec = do
 
     it "generates output for both subdirectory and local specs" $ do
         let
-            output = generate defaultConfig (DiscoverResult ["Sub"] ["LocalSpec"] [])
+            output = generate defaultConfig defaultParams{subdirSpecs = ["Sub"], localSpecs = ["LocalSpec"]}
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -107,7 +115,7 @@ spec = do
 
     it "generates imports using custom subdir file" $ do
         let
-            output = generate defaultConfig{subdirFile = "SubTest.hs"} (DiscoverResult ["Foo"] [] [])
+            output = generate defaultConfig{subdirFile = "SubTest.hs"} defaultParams{subdirSpecs = ["Foo"]}
         output
             `shouldBe` unlines
                 [ "{-# LINE 1 \"test/Spec.hs\" #-}"
@@ -122,4 +130,31 @@ spec = do
                 , "spec :: Spec"
                 , "spec = do"
                 , "  describe \"Foo\" Foo.SubTest.spec"
+                ]
+
+    it "includes user pragmas in output" $ do
+        let
+            output =
+                generate
+                    defaultConfig
+                    defaultParams
+                        { subdirSpecs = ["Foo"]
+                        , pragmas = ["{-# LANGUAGE OverloadedStrings #-}", "{-# OPTIONS_GHC -Wall #-}"]
+                        }
+        output
+            `shouldBe` unlines
+                [ "{-# LINE 1 \"test/Spec.hs\" #-}"
+                , "{-# LANGUAGE OverloadedStrings #-}"
+                , "{-# OPTIONS_GHC -Wall #-}"
+                , "module Main (main) where"
+                , ""
+                , "import Test.Hspec"
+                , "import qualified Foo.Spec"
+                , ""
+                , "main :: IO ()"
+                , "main = hspec spec"
+                , ""
+                , "spec :: Spec"
+                , "spec = do"
+                , "  describe \"Foo\" Foo.Spec.spec"
                 ]
