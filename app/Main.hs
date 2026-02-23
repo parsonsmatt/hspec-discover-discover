@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Lib
+import Hspec.Discover.Discover (run)
 
 main :: IO ()
-main = someFunc
+main = run

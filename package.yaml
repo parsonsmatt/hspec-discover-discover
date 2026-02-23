@@ -21,6 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/pars
 
 dependencies:
 - base >= 4.7 && < 5
+- async
+- containers
+- directory
+- filepath
+- optparse-applicative
+- text
 
 ghc-options:
 - -Wall
@@ -37,7 +43,7 @@ library:
   source-dirs: src
 
 executables:
-  hspec-discover-discover-exe:
+  hspec-discover-discover:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -55,5 +61,12 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    build-tools:
+    - hspec-discover-discover
+    - hspec-discover
     dependencies:
     - hspec-discover-discover
+    - hspec
+    - optparse-applicative
+    - process
+    - temporary
