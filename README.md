@@ -48,6 +48,8 @@ spec = do
         True `shouldBe` True
 ```
 
+This file can itself be generated from `hspec-discover`, though you will need [this patch](https://github.com/hspec/hspec/pull/954) for it to generate modules properly in subdirectories.
+
 ### Generated output
 
 For the directory structure above, `hspec-discover-discover` generates:
@@ -94,28 +96,6 @@ For example, to look for `SubTest.hs` instead of `Spec.hs` in subdirectories:
 This would discover `test/Foo/SubTest.hs` and generate
 `import qualified Foo.SubTest`.
 
-### Missing specs
-
-If a subdirectory does not contain the configured subdir file (default
-`Spec.hs`), a warning is printed to stderr. If no spec modules are found at
-all, the preprocessor exits with an error.
-
-## Installation
-
-Add `hspec-discover-discover` to your `package.yaml` or `.cabal` file as a
-build tool dependency for your test suite:
-
-```yaml
-tests:
-  my-test-suite:
-    main: Spec.hs
-    source-dirs: test
-    build-tools:
-    - hspec-discover-discover
-    dependencies:
-    - hspec
-```
-
 ## Comparison with hspec-discover
 
 | Feature | hspec-discover | hspec-discover-discover |
@@ -123,6 +103,11 @@ tests:
 | Discovery | Recursive `*Spec.hs` | Immediate subdirs with configurable file (default `Spec.hs`) + co-located `*Spec.hs` |
 | Naming | Any file ending in `Spec.hs` | Configurable file in subdirs, or `*Spec.hs` in same directory |
 | Grouping | Flat list of specs | One `describe` per subdirectory or local spec |
+
+Truly, these tools are meant to be used in conjunction with each other.
+`hspec-discover-discover` is primarily useful when `hspec-discover`'s single generated `Spec.hs` module becomes too large to compile quickly.
+This tool was developed when I noticed that our `Spec.hs` module was taking 2:36 to compile.
+Splitting things up into `test/Spec.hs` with this tool (2s compile time) and a myriad of `test/*/TestGroup.hs` files (can compile in parallel much earlier in the build graph) dropped our overall CI build time from 8:00 to 6:30.
 
 ## License
 
